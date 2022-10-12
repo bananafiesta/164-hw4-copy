@@ -1,0 +1,13 @@
+(executable
+ (name interp)
+ (modules interp)
+ (preprocess
+  (pps ppx_let))
+ (libraries core asm s_exp lib core_unix.command_unix))
+
+(executable
+ (name compile)
+ (modules compile)
+ (preprocess
+  (pps ppx_let))
+ (libraries core asm s_exp lib core_unix.command_unix))
