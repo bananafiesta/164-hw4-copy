@@ -135,6 +135,40 @@ let compile_unary_primitive : s_exp -> string -> directive list =
           ensure_pair (Reg Rax) e
             @ [Mov (Reg Rax, MemOffset (Reg Rax, Imm (-pair_tag + 8)))]
 
+      | "list?" ->
+          let loop_label = gensym "loop"
+          in
+          let continue_label = gensym "continue"
+          in
+          let true_label = gensym "true"
+          in
+          let false_label = gensym "false"
+          in
+          [Label loop_label]
+
+          @ [Mov (Reg R8, Reg Rax)
+          ; Cmp (Reg R8, Imm 0b11111111)
+          ; Je true_label
+          ]
+
+          @ [ Mov (Reg R8, Reg Rax)
+          ; And (Reg R8, Imm heap_mask)
+          ; Cmp (Reg R8, Imm pair_tag)
+          ; Jne false_label
+          ; Mov (Reg Rax, MemOffset (Reg Rax, Imm (-pair_tag + 8)))
+          ]
+
+          @ [Jmp loop_label]
+          @ [Label true_label
+          ; Mov (Reg Rax, operand_of_bool true)
+          ; Jmp continue_label
+          ]
+          @ [Label false_label
+          ; Mov (Reg Rax, operand_of_bool false)
+          ; Jmp continue_label
+          ]
+          @ [Label continue_label]
+
       | _ ->
           raise (Error.Stuck e)
     end
@@ -210,6 +244,9 @@ let rec compile_expr : symtab -> int -> s_exp -> directive list =
     begin match e with
       | Num x ->
           [Mov (Reg Rax, operand_of_num x)]
+
+      | Lst [] ->
+          [Mov (Reg Rax, Imm 0b11111111)]
 
       | Sym "true" ->
           [Mov (Reg Rax, operand_of_bool true)]

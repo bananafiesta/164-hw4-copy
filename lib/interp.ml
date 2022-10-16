@@ -7,6 +7,7 @@ type value
   = Num of int
   | Bool of bool
   | Pair of (value * value)
+  | Unit
 
 type environment =
   value Symtab.symtab
@@ -29,12 +30,15 @@ let rec display_value : value -> string =
 
       | Pair (v1, v2) ->
           sprintf "(pair %s %s)" (display_value v1) (display_value v2)
+
+      | Unit -> 
+          "()"
     end
 
 (** [interp_unary_primitive prim arg] tries to evaluate the primitive operation
     named by [prim] on the argument [arg]. If the operation is ill-typed, or if
     [prim] does not refer to a valid primitive operation, it returns [None]. *)
-let interp_unary_primitive : string -> value -> value option =
+let rec interp_unary_primitive : string -> value -> value option =
   fun prim arg ->
     begin match (prim, arg) with
       | ("add1", Num x) ->
@@ -72,6 +76,18 @@ let interp_unary_primitive : string -> value -> value option =
 
       | ("right", Pair (_, v)) ->
           Some v
+
+      | ("list?", v) ->
+          (
+            begin match v with
+                Unit -> 
+                    Some (Bool true)
+                | Pair (_, x) ->
+                interp_unary_primitive "list?" x
+                | _ ->
+                    Some (Bool false)
+            end
+          )
 
       | _ ->
           None
@@ -122,6 +138,9 @@ let rec interp_expr : environment -> s_exp -> value =
     begin match e with
       | Num x ->
           Num x
+
+      | Lst [] ->
+          Unit
 
       | Sym var ->
           begin match Symtab.find_opt var env with

@@ -16,6 +16,8 @@ extern uint64_t lisp_entry(void *heap);
 
 #define pair_tag   0b010
 
+#define nil_tag    0b11111111
+
 uint64_t print_value(uint64_t value) {
   if ((value & num_mask) == num_tag) {
     int64_t ivalue = (int64_t) value;
@@ -35,6 +37,9 @@ uint64_t print_value(uint64_t value) {
     printf(" ");
     print_value(v2);
     printf(")");
+
+  } else if (value == nil_tag) {
+    printf("()");
   } else {
     printf("BAD VALUE: %" PRIu64, value);
   }

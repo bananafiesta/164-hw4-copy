@@ -1,0 +1,14 @@
+(), ()
+(pair 1 ()), (pair 1 ())
+(pair (+ 1 2) ()), (pair 3 ())
+(pair (+ 2 3) (pair 3 ())), (pair 5 (pair 3 ())) 
+(pair (pair 1 2) ()), (pair (pair 1 2) ())
+(list? ()), true
+(list? (+ 5 3)), false
+(list? (pair 1 2)), false
+(list? (pair 1 ())), true
+(list? (pair 1 (pair 2 ()))), true
+(list? (pair (pair 1 2) ())), true
+(list? (pair (+ 1 2) ())), true
+(list? (pair (+ 3 4) (- 5 5))), false
+(list? (pair (/ 1 0) ())), error
