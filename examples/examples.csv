@@ -41,3 +41,5 @@
 (vector-length (vector-set (vector 2 2) 0 (pair 1 2))), 2
 (vector-get (vector 3 (vector 2 2)) 1), [2 2]
 (vector-get (vector-set (vector 2 2) 1 (zero? 2)) 1), false
+(vector 3 ()), [() () ()]
+(vector-set (vector 3 2) 1 ()), [2 () 2]
