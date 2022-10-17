@@ -18,6 +18,8 @@ extern uint64_t lisp_entry(void *heap);
 
 #define nil_tag    0b11111111
 
+#define vector_tag 0b101
+
 uint64_t print_value(uint64_t value) {
   if ((value & num_mask) == num_tag) {
     int64_t ivalue = (int64_t) value;
@@ -40,6 +42,19 @@ uint64_t print_value(uint64_t value) {
 
   } else if (value == nil_tag) {
     printf("()");
+  } else if ((value & heap_mask) == vector_tag) {
+    int64_t length = *((uint64_t*) (value - vector_tag));
+    length = length >> num_shift;
+    uint64_t curr_elem = *((uint64_t*) (value - vector_tag + 8));
+    printf("[");
+    print_value(curr_elem);
+    for (int i = 1; i < length; i++) {
+      curr_elem = *((uint64_t*) (value - vector_tag + (8 * (1 + i))));
+      // printf(" %s", print_value(curr_elem));
+      printf(" ");
+      print_value(curr_elem);
+    }
+    printf("]");
   } else {
     printf("BAD VALUE: %" PRIu64, value);
   }

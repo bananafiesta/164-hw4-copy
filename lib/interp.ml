@@ -8,6 +8,7 @@ type value
   | Bool of bool
   | Pair of (value * value)
   | Unit
+  | Vector of value array
 
 type environment =
   value Symtab.symtab
@@ -33,6 +34,16 @@ let rec display_value : value -> string =
 
       | Unit -> 
           "()"
+
+      | Vector x ->
+          let rec vector_printer : value array -> int -> int -> string =
+            fun arr i len ->
+                if (i >= len) then "" else (
+                    " " ^ (display_value (Array.get arr i)) ^ (vector_printer arr (i + 1) len)
+                )
+
+          in 
+          "[" ^ (display_value (Array.get x 0)) ^ (vector_printer x 1 (Array.length x)) ^ "]"
     end
 
 (** [interp_unary_primitive prim arg] tries to evaluate the primitive operation
@@ -89,6 +100,15 @@ let rec interp_unary_primitive : string -> value -> value option =
             end
           )
 
+      | ("vector?", Vector _) ->
+          Some (Bool true)
+
+      | ("vector?", _) ->
+          Some (Bool false)
+
+      | ("vector-length", Vector v) ->
+          Some (Num (Array.length v))
+
       | _ ->
           None
     end
@@ -115,6 +135,14 @@ let interp_binary_primitive : string -> value -> value -> value option =
       | ("pair", v1, v2) ->
           Some (Pair (v1, v2))
 
+      | ("vector", Num x1, e) ->
+          if (x1 <= 0) then None else 
+            Some (Vector (Array.make x1 e))
+
+      | ("vector-get", Vector v, Num n) ->
+          if (n < 0) || (n >= (Array.length v)) then None else
+            Some ((Array.get v n))
+
       | _ ->
           None
     end
@@ -127,6 +155,11 @@ let interp_trinary_primitive :
  string -> value -> value -> value -> value option =
   fun prim arg1 arg2 arg3 ->
     begin match (prim, arg1, arg2, arg3) with
+      ("vector-set", Vector v, Num n, e) ->
+          if (n < 0) || (n >= (Array.length v)) then None else
+            let _ = Array.set v n e
+            in
+            Some (Vector v)
       | _ ->
         None
     end

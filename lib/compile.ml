@@ -23,6 +23,8 @@ let heap_mask = 0b111
 
 let pair_tag = 0b010
 
+let vector_tag = 0b101
+
 (** [operand_of_num x] returns the runtime representation of the number [x] as
     an operand for instructions *)
 let operand_of_num : int -> operand =
@@ -169,6 +171,20 @@ let compile_unary_primitive : s_exp -> string -> directive list =
           ]
           @ [Label continue_label]
 
+      | "vector?" ->
+        [ And (Reg Rax, Imm heap_mask)
+        ; Cmp (Reg Rax, Imm vector_tag)
+        ]
+        @ zf_to_bool
+
+      | "vector-length" ->
+        [ Mov (Reg R8, Reg Rax)
+        ; And (Reg R8, Imm heap_mask)
+        ; Cmp (Reg R8, Imm vector_tag)
+        ; Jne "lisp_error"
+        ; Mov (Reg Rax, MemOffset (Reg Rax, Imm (-vector_tag)))
+        ]
+
       | _ ->
           raise (Error.Stuck e)
     end
@@ -214,6 +230,69 @@ let compile_binary_primitive : int -> s_exp -> string -> directive list =
           ; Add (Reg Rdi, Imm 16)
           ]
 
+      | "vector" ->
+          let loop_label = gensym "loop"
+          in
+          let continue_label = gensym "continue"
+          in
+          (* r8 is len, rax is element *)
+          [ Mov (Reg R8, stack_address stack_index)
+          (* check that len > 0*)
+          ; Sar (Reg R8, Imm num_shift)
+          ; Cmp (Reg R8, Imm 0)
+          ; Jng "lisp_error"
+          ; Mov (Reg R8, stack_address stack_index)
+          ; Mov (MemOffset (Reg Rdi, Imm 0), Reg R8)
+          ; Sar (Reg R8, Imm num_shift)
+          (* set r8 to be rdi + 8*(len + 1) *)
+          ; Add (Reg R8, Imm 1)
+          ; Shl (Reg R8, Imm 3)
+          ; Add (Reg R8, Reg Rdi)
+
+          (* Use R9 to track current location in heap *)
+          ; Mov (Reg R9, Reg Rdi)
+          ; Add (Reg R9, Imm 8)
+
+          (* loop to fill out the elements of the vector *)
+          ; Label loop_label
+          ; Mov (MemOffset (Reg R9, Imm 0), Reg Rax)
+          ; Add (Reg R9, Imm 8)
+          ; Cmp (Reg R9, Reg R8)
+          ; Jnl continue_label
+          ; Jmp loop_label
+
+          ; Label continue_label
+          ; Mov (Reg Rax, Reg Rdi)
+          ; Or (Reg Rax, Imm vector_tag)
+          ; Mov (Reg Rdi, Reg R8)
+          ]
+      | "vector-get" ->
+        (* check that v is a vector *)
+        [ Mov (Reg R8, stack_address stack_index)
+        ; And (Reg R8, Imm heap_mask)
+        ; Cmp (Reg R8, Imm vector_tag)
+        ; Jne "lisp_error"
+        (* move vector to r8 and then move len into r8*)
+        ; Mov (Reg R8, stack_address stack_index)
+        ; Mov (Reg R8, MemOffset (Reg R8, Imm (-vector_tag)))
+        (* move n to r9, get rid of tags and compare to see if n >= len*)
+        ; Sar (Reg R8, Imm num_shift)
+        ; Mov (Reg R9, Reg Rax)
+        ; Sar (Reg R9, Imm num_shift)
+        ; Cmp (Reg R9, Reg R8)
+        ; Jnl "lisp_error"
+        (* Check if n < 0 *)
+        ; Cmp (Reg R9, Imm 0)
+        ; Jl "lisp_error"
+        (* add 1 to n and multiply by 8 to get offset then add *)
+        ; Add (Reg R9, Imm 1)
+        ; Shl (Reg R9, Imm 3)
+        (* Move vector to r8 and get element at r8 + offset - vector_tag *)
+        ; Mov (Reg R8, stack_address stack_index)
+        ; Add (Reg R8, Reg R9)
+        ; Mov (Reg Rax, MemOffset (Reg R8, Imm (-vector_tag)))
+        ]
+
       | _ ->
           raise (Error.Stuck e)
     end
@@ -226,6 +305,53 @@ let compile_trinary_primitive :
  int -> s_exp -> string -> directive list =
   fun stack_index e prim ->
     begin match prim with
+      "vector-set" ->
+        let continue_label = gensym "continue" in
+        let msg_label = gensym "emsg" in
+        let error_label = gensym "erroraction" in
+        (* move v to r8 and check if it is a vector *)
+        (* [ Mov (Reg R8, stack_address (stack_index + 8)) *)
+        [ Mov (Reg R8, stack_address (stack_index))
+        ; And (Reg R8, Imm heap_mask)
+        ; Cmp (Reg R8, Imm vector_tag)
+
+        (* ; LeaLabel (Reg Rdi, msg_label) *)
+        (* ; Jne "lisp_error" *)
+        ; Jne error_label
+        (* move vector to r8 and then move len into r8*)
+        (* ; Mov (Reg R8, stack_address (stack_index + 8)) *)
+        ; Mov (Reg R8, stack_address (stack_index))
+        ; Mov (Reg R8, MemOffset (Reg R8, Imm (-vector_tag)))
+        (* move n to r9, get rid of tags and compare to see if n >= len*)
+        (* ; Mov (Reg R9, stack_address stack_index) *)
+        ; Mov (Reg R9, stack_address (stack_index - 8))
+        ; Sar (Reg R8, Imm num_shift)
+        ; Sar (Reg R9, Imm num_shift)
+        ; Cmp (Reg R9, Reg R8)
+        (* ; Jnl "lisp_error" *)
+        ; Jnl error_label
+        (* Check if n < 0 *)
+        ; Cmp (Reg R9, Imm 0)
+        (* ; Jl "lisp_error" *)
+        ; Jl error_label
+        (* get offset by adding 1 to n then multiplying that by 8 *)
+        ; Add (Reg R9, Imm 1)
+        ; Shl (Reg R9, Imm 3)
+        (* move vector to r8, write rax to r8 + offset - vector_tag *)
+        (* ; Mov (Reg R8, stack_address (stack_index + 8)) *)
+        ; Mov (Reg R8, stack_address (stack_index))
+        ; Add (Reg R9, Reg R8)
+        ; Mov (MemOffset (Reg R9, Imm (-vector_tag)), Reg Rax)
+        ; Mov (Reg Rax, Reg R8)
+        ; Jmp continue_label
+        ; Label error_label
+        ; LeaLabel (Reg Rdi, msg_label)
+        ; Jmp "lisp_error"
+        ; Label msg_label
+        ; DqString (string_of_s_exp e)
+        ; Label continue_label
+
+        ]
       | _ ->
           raise (Error.Stuck e)
     end
